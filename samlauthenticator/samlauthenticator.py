@@ -706,40 +706,6 @@ class SAMLAuthenticator(Authenticator):
         # by the user's browser.
         handler_self.redirect(redirect_link_getter(saml_metadata_etree)[0], permanent=False)
 
-    def _make_org_metadata(self):
-        if self.organization_name or \
-                self.organization_display_name or \
-                self.organization_url:
-            org_name_elem = org_disp_name_elem = org_url_elem = ''
-            organization_name_element = '''<OrganizationName>{{ name }}</OrganizationName>'''
-            organization_display_name_element = '''<OrganizationDisplayName>{{ displayName }}</OrganizationDisplayName>'''
-            organization_url_element = '''<OrganizationURL>{{ url }}</OrganizationURL>'''
-            organization_metadata = '''
-    <Organization>
-        {{ organizationName }}
-        {{ organizationDisplayName }}
-        {{ organizationUrl }}
-    </Organization>
-    '''
-
-            if self.organization_name:
-                org_name_template = Template(organization_name_element)
-                org_name_elem = org_name_template.render(name=self.organization_name)
-
-            if self.organization_display_name:
-                org_disp_name_template = Template(organization_display_name_element)
-                org_disp_name_elem = org_disp_name_template.render(displayName=self.organization_display_name)
-
-            if self.organization_url:
-                org_url_template = Template(organization_url_element)
-                org_url_elem = org_url_template.render(url=self.organization_url)
-
-            org_metadata_template = Template(organization_metadata)
-            return org_metadata_template.render(organizationName=org_name_elem,
-                                                organizationDisplayName=org_disp_name_elem,
-                                                organizationUrl=org_url_elem)
-
-        return ''
 
     def get_handlers(authenticator_self, app):
 
