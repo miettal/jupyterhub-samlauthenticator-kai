@@ -1,0 +1,52 @@
+---
+name: ci
+on: [push]  # yamllint disable-line rule:truthy
+
+jobs:
+  code-analysis:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toxenv:
+          - 'flake8'
+          - 'mypy'
+          - 'bandit'
+          - 'pip-audit'
+        experimental: [false]
+    container: python:3.11
+    steps:
+      - uses: actions/checkout@v3
+      - run: apt-get update && apt-get install -y python3 python3-pip
+      - run: pip install --upgrade tox
+      - run: tox -e ${{ matrix.toxenv }} || ${{ matrix.experimental }}
+
+  yamllint:
+    runs-on: ubuntu-latest
+    container: python:3.11
+    steps:
+      - uses: actions/checkout@v3
+      - run: pip install yamllint
+      - run: yamllint --format standard .
+
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python:
+          - {'toxenv': 'py39', 'container': 'python:3.9'}
+          - {'toxenv': 'py310', 'container': 'python:3.10'}
+          - {'toxenv': 'py311', 'container': 'python:3.11'}
+        experimental: [false]
+    container:
+      image: ${{ matrix.python.container}}
+    steps:
+      - uses: actions/checkout@v3
+      - run: pip install .
+      - run: pip install --upgrade tox
+      - run: tox -e ${{ matrix.python.toxenv }} || ${{ matrix.experimental }}
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v3
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
