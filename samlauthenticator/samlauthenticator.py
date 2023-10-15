@@ -7,6 +7,12 @@ import asyncio
 import pwd
 import subprocess
 
+from saml2 import BINDING_HTTP_POST
+from saml2 import BINDING_HTTP_REDIRECT
+from saml2 import entity
+from saml2.client import Saml2Client
+from saml2.config import Config as Saml2Config
+
 # Imports to work with JupyterHub
 from jupyterhub.auth import Authenticator
 from jupyterhub.utils import maybe_future
@@ -53,83 +59,6 @@ class SAMLAuthenticator(Authenticator):
         including DNS poisoning.
         '''
     )
-    xpath_username_location = Unicode(
-        default_value='//saml:NameID/text()',
-        allow_none=True,
-        config=True,
-        help='''
-        This is an XPath that specifies where the user's name or id is located in the
-        SAML Assertion. This is partly for testing purposes, but there are cases where
-        an administrator may want a user to be identified by their email address instead
-        of an LDAP DN or another string that comes in the NameID field. The namespace
-        bindings when executing the XPath will be as follows:
-
-        {
-            'ds'   : 'http://www.w3.org/2000/09/xmldsig#',
-            'md'   : 'urn:oasis:names:tc:SAML:2.0:metadata',
-            'saml' : 'urn:oasis:names:tc:SAML:2.0:assertion',
-            'samlp': 'urn:oasis:names:tc:SAML:2.0:protocol'
-        }
-        '''
-    )
-    login_post_field = Unicode(
-        default_value='SAMLResponse',
-        allow_none=False,
-        config=True,
-        help='''
-        This value specifies what field in the SAML Post request contains the Base-64
-        encoded SAML Response.
-        '''
-    )
-    audience = Unicode(
-        default_value=None,
-        allow_none=True,
-        config=True,
-        help='''
-        The SAML Audience must be configured in the SAML IdP. This value ensures that a
-        SAML assertion cannot be used by a malicious service to authenticate to a naive
-        service. If this value is not set in the configuration file or if the string
-        provided is a "false-y" value in python, this will not be checked.
-        '''
-    )
-    recipient = Unicode(
-        default_value=None,
-        allow_none=True,
-        config=True,
-        help='''
-        The SAML Recipient must be configured in the SAML IdP. This value ensures that a
-        SAML assertion cannot be used by a malicious service to authenticate to a naive
-        service. If this value is not set in the configuration file or if the string
-        provided is a "false-y" value in python, this will not be checked.
-        '''
-    )
-    time_format_string = Unicode(
-        default_value='%Y-%m-%dT%H:%M:%SZ',
-        allow_none=False,
-        config=True,
-        help='''
-        A time format string that complies with python's strftime()/strptime() behavior.
-        For more information on this format, please read the information at the
-        following link:
-
-        https://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior
-
-        '''
-    )
-    idp_timezone = Unicode(
-        default_value='UTC',
-        allow_none=True,
-        config=True,
-        help='''
-        A timezone-specific string that uniquely identifies a timezone using pytz's
-        timezone constructor. To view a list of options, import the package and
-        inspect the `pytz.all_timezones` list. It is quite long. For more information
-        on pytz, please read peruse the pip package:
-
-        https://pypi.org/project/pytz/
-
-        '''
-    )
     shutdown_on_logout = Bool(
         default_value=False,
         allow_none=False,
@@ -146,28 +75,6 @@ class SAMLAuthenticator(Authenticator):
         It is a little odd to have this property on the Authenticator object, but
         (for internal-detail-reasons) since we need to hand-craft the LogoutHandler
         class, this should be on the Authenticator.
-        '''
-    )
-    slo_forwad_on_logout = Bool(
-        default_value=True,
-        allow_none=False,
-        config=True,
-        help='''
-        [DEPRECATED] Please use `slo_forward_on_logout`.
-        This attribute will be removed in the next version.
-        See https://github.com/bluedatainc/jupyterhub-samlauthenticator/releases/tag/samlauthenticator-0.0.7
-        for more information.
-        '''
-    )
-    slo_forward_on_logout = Bool(
-        default_value=True,
-        allow_none=False,
-        config=True,
-        help='''
-        To prevent forwarding users to the SLO URI on logout,
-        set this parameter to False like so:
-
-        c.SAMLAuthenticator.slo_forward_on_logout = False
         '''
     )
     entity_id = Unicode(
@@ -187,20 +94,6 @@ class SAMLAuthenticator(Authenticator):
         if the JupyterHub server should be reached at
         10.0.31.2:8000, this should be populated as
         'https://10.0.31.2:8000'
-        '''
-    )
-    nameid_format = Unicode(
-        default_value='urn:oasis:names:tc:SAML:2.0:nameid-format:transient',
-        allow_none=True,
-        config=True,
-        help='''
-        The nameId format to set in the Jupyter SAML Metadata.
-        Defaults to transient nameid-format, but other values such as
-        urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress or
-        urn:oasis:names:tc:SAML:2.0:nameid-format:persistent
-        are available. See section 8.3 of the spec
-        http://docs.oasis-open.org/security/saml/v2.0/saml-core-2.0-os.pdf
-        for more details.
         '''
     )
     acs_endpoint_url = Unicode(
@@ -224,488 +117,56 @@ class SAMLAuthenticator(Authenticator):
         to '/hub/login'.
         '''
     )
-    organization_name = Unicode(
-        default_value='',
-        allow_none=True,
-        config=True,
-        help='''
-        A short-form organization name. Will be populated into the
-        SP metadata.
-        '''
-    )
-    organization_display_name = Unicode(
-        default_value='',
-        allow_none=True,
-        config=True,
-        help='''
-        A long-form organization name. Will be populated into the
-        SP metadata.
-        '''
-    )
-    organization_url = Unicode(
-        default_value='',
-        allow_none=True,
-        config=True,
-        help='''
-        A URL that uniquely identifies the organization.
-        '''
-    )
-    create_system_users = Bool(
-        default_value=True,
-        allow_none=False,
-        config=True,
-        help='''
-        When True, SAMLAuthenticator will create system users
-        on user authentication if they don't exist already.
-        Default value is True.
-        '''
-    )
-    create_system_user_binary = Unicode(
-        default_value='useradd',
-        allow_none=True,
-        config=True,
-        help='''
-        When SAMLAuthenticator creates a system user (also called "just in time user provisioning")
-        it calls the binary specified in this property in a subprocess to perform the user creation.
-        Default value is 'useradd'.
-        This can be set to any binary in the host machine's PATH or a full path to an alternate
-        binary not in the host's path. This binary MUST accpet calls of the form
-        "${binary_name} ${user_name}" and exit with a status of zero on valid user addition or
-        a non-zero status in the failure case.
-        '''
-    )
-    xpath_role_location = Unicode(
-        default_value=None,
-        allow_none=True,
-        config=True,
-        help='''
-        This is an XPath that specifies where the user's roles are located in
-        the SAML  Assertion. This is to restrict users with certain roles
-        granted by the administrator to have access to jupyterhub.
-        '''
-    )
-    allowed_roles = Unicode(
-        default_value=None,
-        allow_none=True,
-        config=True,
-        help='''
-        Comma-separated list of roles. SAMLAuthenticator will restrict access to
-        jupyterhub to these roles if specified.
-        '''
-    )
-    _const_warn_explain       = 'Because no user would be allowed to log in via roles, role check disabled.'
-    _const_warn_no_role_xpath = 'Allowed roles set while role location XPath is not set.'
-    _const_warn_no_roles      = 'Allowed roles not set while role location XPath is set.'
 
-    def _get_metadata_from_file(self):
-        with open(self.metadata_filepath, 'r') as saml_metadata:
-            return saml_metadata.read()
-
-    def _get_metadata_from_config(self):
-        return self.metadata_content
-
-    def _get_metadata_from_url(self):
-        with urlopen(self.metadata_url) as remote_metadata:
-            return remote_metadata.read()
-
-    def _get_preferred_metadata_from_source(self):
-        if self.metadata_filepath:
-            return self._get_metadata_from_file()
-
-        if self.metadata_content:
-            return self._get_metadata_from_config()
-
-        if self.metadata_url:
-            return self._get_metadata_from_url()
-
-        return None
-
-    def _log_exception_error(self, exception):
-        self.log.warning('Exception: %s', str(exception))
-
-    def _get_saml_doc_etree(self, data):
-        saml_response = data.get(self.login_post_field, None)
-
-        if not saml_response:
-            # Failed to get the SAML Response from the posted data
-            self.log.warning('Could not get SAML Response from post data')
-            self.log.warning('Expected SAML response in field %s', self.login_post_field)
-            self.log.warning('Posted login data %s', str(data))
-            return None
-
-        decoded_saml_doc = None
-
-        try:
-            decoded_saml_doc = b64decode(saml_response)
-        except Exception as e:
-            # There was a problem base64 decoding the xml document from the posted data
-            self.log.warning('Got exception when attempting to decode SAML response')
-            self.log.warning('Saml Response: %s', saml_response)
-            self._log_exception_error(e)
-            return None
-
-        try:
-            return etree.fromstring(decoded_saml_doc)
-        except Exception as e:
-            self.log.warning('Got exception when attempting to hydrate response to etree')
-            self.log.warning('Saml Response: %s', decoded_saml_doc)
-            self._log_exception_error(e)
-            return None
-
-    def _get_saml_metadata_etree(self):
-        try:
-            saml_metadata = self._get_preferred_metadata_from_source()
-        except Exception as e:
-            # There was a problem getting the SAML metadata
-            self.log.warning('Got exception when attempting to read SAML metadata')
-            self.log.warning('Ensure that EXACTLY ONE of metadata_filepath, ' +
-                             'metadata_content, and metadata_url is populated')
-            self._log_exception_error(e)
-            return None
-
-        if not saml_metadata:
-            # There was a problem getting the SAML metadata
-            self.log.warning('Got exception when attempting to read SAML metadata')
-            self.log.warning('Ensure that EXACTLY ONE of metadata_filepath, ' +
-                             'metadata_content, and metadata_url is populated')
-            self.log.warning('SAML metadata was empty')
-            return None
-
-        metadata_etree = None
-
-        try:
-            metadata_etree = etree.fromstring(saml_metadata)
-        except Exception as e:
-            # Failed to parse SAML Metadata
-            self.log.warning('Got exception when attempting to parse SAML metadata')
-            self._log_exception_error(e)
-
-        return metadata_etree
-
-    def _verify_saml_signature(self, saml_metadata, decoded_saml_doc):
-        xpath_with_namespaces = self._make_xpath_builder()
-        find_cert = xpath_with_namespaces('//ds:KeyInfo/ds:X509Data/ds:X509Certificate/text()')
-        cert_value = None
-
-        try:
-            cert_value = find_cert(saml_metadata)[0]
-        except Exception as e:
-            self.log.warning('Could not get cert value from saml metadata')
-            self._log_exception_error(e)
-            return None
-
-        signed_xml = None
-        try:
-            signed_xml = XMLVerifier().verify(decoded_saml_doc, x509_cert=cert_value).signed_xml
-        except Exception as e:
-            self.log.warning('Failed to verify signature on SAML Response')
-            self._log_exception_error(e)
-
-        return signed_xml
-
-    def _make_xpath_builder(self):
-        namespaces = {
-            'ds'   : 'http://www.w3.org/2000/09/xmldsig#',
-            'md'   : 'urn:oasis:names:tc:SAML:2.0:metadata',
-            'saml' : 'urn:oasis:names:tc:SAML:2.0:assertion',
-            'samlp': 'urn:oasis:names:tc:SAML:2.0:protocol'
-        }
-
-        def xpath_with_namespaces(xpath_str):
-            return etree.XPath(xpath_str, namespaces=namespaces)
-
-        return xpath_with_namespaces
-
-    def _verify_saml_response_against_metadata(self, saml_metadata, signed_xml):
-        xpath_with_namespaces = self._make_xpath_builder()
-
-        find_entity_id = xpath_with_namespaces('//saml:Issuer/text()')
-        find_metadata_entity_id = xpath_with_namespaces('//md:EntityDescriptor/@entityID')
-
-        saml_metadata_entity_id_list = find_metadata_entity_id(saml_metadata)
-        saml_resp_entity_id_list = find_entity_id(signed_xml)
-
-        if saml_resp_entity_id_list and saml_metadata_entity_id_list:
-            if saml_metadata_entity_id_list[0] != saml_resp_entity_id_list[0]:
-                self.log.warning('Metadata entity id did not match the response entity id')
-                self.log.warning('Metadata entity id: %s', saml_metadata_entity_id_list[0])
-                self.log.warning('Response entity id: %s', saml_resp_entity_id_list[0])
-                return False
-        else:
-            self.log.warning('The entity ID needs to be set in both the metadata and the SAML Response')
-            if not saml_resp_entity_id_list:
-                self.log.warning('The entity ID was not set in the SAML Response')
-            if not saml_metadata_entity_id_list:
-                self.log.warning('The entity ID was not set in the SAML metadata')
-            return False
-
-        return True
-
-    def _verify_saml_response_against_configured_fields(self, signed_xml):
-        xpath_with_namespaces = self._make_xpath_builder()
-
-        if self.audience:
-            find_audience = xpath_with_namespaces('//saml:Audience/text()')
-            saml_resp_audience_list = find_audience(signed_xml)
-            if saml_resp_audience_list:
-                if saml_resp_audience_list[0] != self.audience:
-                    self.log.warning('Configured audience did not match the response audience')
-                    self.log.warning('Configured audience: %s', self.audience)
-                    self.log.warning('Response audience: %s', saml_resp_audience_list[0])
-                    return False
-            else:
-                self.log.warning('SAML Audience was set in authenticator config file, but not in SAML Response')
-                return False
-
-        if self.recipient:
-            find_recipient = xpath_with_namespaces('//saml:SubjectConfirmationData/@Recipient')
-            recipient_list = find_recipient(signed_xml)
-            if recipient_list:
-                if self.recipient != recipient_list[0]:
-                    self.log.warning('Configured recipient did not match the response recipient')
-                    self.log.warning('Configured recipient: %s', self.recipient)
-                    self.log.warning('Response recipient: %s', recipient_list[0])
-                    return False
-            else:
-                self.log.warning('Could not find recipient in SAML response')
-                return False
-
-        return True
-
-    def _is_date_aware(self, created_datetime):
-        return created_datetime.tzinfo is not None and \
-            created_datetime.tzinfo.utcoffset(created_datetime) is not None
-
-    def _verify_physical_constraints(self, signed_xml):
-        xpath_with_namespaces = self._make_xpath_builder()
-
-        find_not_before = xpath_with_namespaces('//saml:Conditions/@NotBefore')
-        find_not_on_or_after = xpath_with_namespaces('//saml:Conditions/@NotOnOrAfter')
-
-        not_before_list = find_not_before(signed_xml)
-        not_on_or_after_list = find_not_on_or_after(signed_xml)
-
-        if not_before_list and not_on_or_after_list:
-
-            not_before_datetime = datetime.strptime(not_before_list[0], self.time_format_string)
-            not_on_or_after_datetime = datetime.strptime(not_on_or_after_list[0], self.time_format_string)
-
-            timezone_obj = None
-
-            if not self._is_date_aware(not_before_datetime):
-                timezone_obj = pytz.timezone(self.idp_timezone)
-                not_before_datetime = timezone_obj.localize(not_before_datetime)
-
-            if not self._is_date_aware(not_on_or_after_datetime):
-                if not timezone_obj:
-                    timezone_obj = pytz.timezone(self.idp_timezone)
-                not_on_or_after_datetime = timezone_obj.localize(not_on_or_after_datetime)
-
-            now = datetime.now(timezone.utc)
-
-            if now < not_before_datetime or now >= not_on_or_after_datetime:
-                self.log.warning('Bad timing condition')
-                if now < not_before_datetime:
-                    self.log.warning('Sent SAML Response before it was permitted')
-                if now >= not_on_or_after_datetime:
-                    self.log.warning('Sent SAML Response after it was permitted')
-                return False
-        else:
-            self.log.warning('SAML assertion did not contain proper conditions')
-            if not not_before_list:
-                self.log.warning('SAML assertion must have NotBefore annotation in Conditions')
-            if not not_on_or_after_list:
-                self.log.warning('SAML assertion must have NotOnOrAfter annotation in Conditions')
-            return False
-
-        return True
-
-    def _verify_saml_response_fields(self, saml_metadata, signed_xml):
-        if not self._verify_saml_response_against_metadata(saml_metadata, signed_xml):
-            self.log.warning('The SAML Assertion did not match the provided metadata')
-            return False
-
-        if not self._verify_saml_response_against_configured_fields(signed_xml):
-            self.log.warning('The SAML Assertion did not match the configured values')
-            return False
-
-        if not self._verify_physical_constraints(signed_xml):
-            self.log.warning('The SAML Assertion did not match the physical constraints')
-            return False
-
-        self.log.info('The SAML Assertion matched the configured values')
-        return True
-
-    def _test_valid_saml_response(self, saml_metadata, saml_doc):
-        signed_xml = self._verify_saml_signature(saml_metadata, saml_doc)
-
-        if signed_xml is None or len(signed_xml) == 0:
-            self.log.warning('Failed to verify signature on SAML Response')
-            return False, None
-
-        return self._verify_saml_response_fields(saml_metadata, signed_xml), signed_xml
-
-    def _get_username_from_saml_etree(self, signed_xml):
-        xpath_with_namespaces = self._make_xpath_builder()
-
-        xpath_fun = xpath_with_namespaces(self.xpath_username_location)
-        xpath_result = xpath_fun(signed_xml)
-
-        if isinstance(xpath_result, etree._ElementUnicodeResult):
-            return xpath_result
-        if type(xpath_result) is list and len(xpath_result) > 0:
-            return xpath_result[0]
-
-        self.log.warning('Could not find name from name XPath')
-        return None
-
-    def _get_roles_from_saml_etree(self, signed_xml):
-        if self.xpath_role_location:
-            xpath_with_namespaces = self._make_xpath_builder()
-            xpath_fun = xpath_with_namespaces(self.xpath_role_location)
-            xpath_result = xpath_fun(signed_xml)
-
-            if xpath_result:
-                return xpath_result
-
-            self.log.warning('Could not find role from role XPath')
-
-        return []
-
-    def _get_username_from_saml_doc(self, signed_xml, decoded_saml_doc):
-        user_name = self._get_username_from_saml_etree(signed_xml)
-        if user_name:
-            return user_name
-
-        self.log.info('Did not get user name from signed SAML Response')
-
-        return self._get_username_from_saml_etree(decoded_saml_doc)
-
-    def _get_roles_from_saml_doc(self, signed_xml, decoded_saml_doc):
-        user_roles = self._get_roles_from_saml_etree(signed_xml)
-        if user_roles:
-            return user_roles
-
-        self.log.info('Did not get user roles from signed SAML Response')
-
-        return self._get_roles_from_saml_etree(decoded_saml_doc)
-
-    def _optional_user_add(self, username):
-        try:
-            pwd.getpwnam(username)
-            # Found the user, we don't need to create them
-            return True
-        except KeyError:
-            # Return the `not` here because a 0 return indicates success and I want to
-            # say something like "if adding the user is successful, return username"
-            return not subprocess.call([self.create_system_user_binary, username])
-
-    def _check_username_and_add_user(self, username):
-        if self.validate_username(username) and \
-                self.check_blacklist(username) and \
-                self.check_whitelist(username):
-            if self.create_system_users:
-                if self._optional_user_add(username):
-                    # Successfully added user
-                    return username
-                else:
-                    # Failed to add user
-                    self.log.error('Failed to add user by calling add user')
-                    return None
-
-            # Didn't try to add user
+    @gen.coroutine
+    def authenticate(self, handler, data):
+        saml_client = self._get_saml_client()
+        authn_response = saml_client.parse_authn_request_response(data['SAMLResponse'], entity.BINDING_HTTP_POST)
+        authn_response.get_identity()
+        user_info = authn_response.get_subject()
+        username = user_info.text
+    
+        username = self.normalize_username(username)
+        if self.validate_username(username) and self.check_blacklist(username) and self.check_whitelist(username):
             return username
 
         # Failed to validate username or failed list check
         self.log.error('Failed to validate username or failed list check')
         return None
 
-    def _check_role(self, user_roles):
-        allowed_roles = [x.strip() for x in self.allowed_roles.split(',')]
+    def _get_saml_client(self):
+        settings = {
+            'entityid': self.entity_id,
+            'metadata': {
+            },
+            'service': {
+                'sp': {
+                    'endpoints': {
+                        'assertion_consumer_service': [
+                            (self.acs_endpoint_url, BINDING_HTTP_REDIRECT),
+                            (self.acs_endpoint_url, BINDING_HTTP_POST),
+                        ],
+                    },
+                    'allow_unsolicited': True,
+                    'authn_requests_signed': False,
+                    'logout_requests_signed': True,
+                    'want_assertions_signed': True,
+                    'want_response_signed': False,
+                },
+            },
+            'allow_unknown_attributes': True,
+        }
+        if self.metadata_filepath:
+            settings['metadata']['local'] = [self.metadata_filepath]
+        if self.metadata_content:
+            settings['metadata']['inline'] = [self.metadata_content]
+        if self.metadata_url:
+            settings['metadata']['remote'] = {'url': self.metadata_url}
 
-        return any(elem in allowed_roles for elem in user_roles)
-
-    def _valid_roles_in_assertion(self, signed_xml, saml_doc_etree):
-        user_roles = self._get_roles_from_saml_doc(signed_xml, saml_doc_etree)
-
-        user_roles_result = self._check_role(user_roles)
-        if not user_roles_result:
-            self.log.error('User role not authorized')
-        return user_roles_result
-
-    def _valid_config_and_roles(self, signed_xml, saml_doc_etree):
-        if self.allowed_roles and self.xpath_role_location:
-            return self._valid_roles_in_assertion(signed_xml, saml_doc_etree)
-
-        if (not self.allowed_roles) and self.xpath_role_location:
-            self.log.warning(self._const_warn_no_roles)
-            self.log.warning(self._const_warn_explain)
-
-        if self.allowed_roles and (not self.xpath_role_location):
-            self.log.warning(self._const_warn_no_role_xpath)
-            self.log.warning(self._const_warn_explain)
-
-        # This technically skips the "neither set" case, but since that's expected-ish, I think we can let
-        # that slide.
-        return True
-
-    def _authenticate(self, handler, data):
-        saml_doc_etree = self._get_saml_doc_etree(data)
-
-        if saml_doc_etree is None or len(saml_doc_etree) == 0:
-            self.log.error('Error getting decoded SAML Response')
-            return None
-
-        saml_metadata_etree = self._get_saml_metadata_etree()
-
-        if saml_metadata_etree is None or len(saml_metadata_etree) == 0:
-            self.log.error('Error getting SAML Metadata')
-            return None
-
-        valid_saml_response, signed_xml = self._test_valid_saml_response(saml_metadata_etree, saml_doc_etree)
-
-        if valid_saml_response:
-            self.log.debug('Authenticated user using SAML')
-            username = self._get_username_from_saml_doc(signed_xml, saml_doc_etree)
-            username = self.normalize_username(username)
-
-            if self._valid_config_and_roles(signed_xml, saml_doc_etree):
-                self.log.debug('Optionally create and return user: ' + username)
-                return self._check_username_and_add_user(username)
-
-            self.log.error('Assertion did not have appropriate roles')
-            return None
-
-        self.log.error('Error validating SAML response')
-        return None
-
-    @gen.coroutine
-    def authenticate(self, handler, data):
-        return self._authenticate(handler, data)
-
-    def _get_redirect_from_metadata_and_redirect(authenticator_self, element_name, handler_self):
-        saml_metadata_etree = authenticator_self._get_saml_metadata_etree()
-
-        handler_self.log.debug('Got metadata etree')
-
-        if saml_metadata_etree is None or len(saml_metadata_etree) == 0:
-            handler_self.log.error('Error getting SAML Metadata')
-            raise web.HTTPError(500)
-
-        handler_self.log.debug('Got valid metadata etree')
-
-        xpath_with_namespaces = authenticator_self._make_xpath_builder()
-
-        binding = 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect'
-        final_xpath = '//' + element_name + '[@Binding=\'' + binding + '\']/@Location'
-        handler_self.log.debug('Final xpath is: ' + final_xpath)
-
-        redirect_link_getter = xpath_with_namespaces(final_xpath)
-
-        # Here permanent MUST BE False - otherwise the /hub/logout GET will not be fired
-        # by the user's browser.
-        handler_self.redirect(redirect_link_getter(saml_metadata_etree)[0], permanent=False)
-
+        config = Saml2Config()
+        config.load(settings)
+        saml_client = Saml2Client(config=config)
+        return saml_client
 
     def get_handlers(authenticator_self, app):
 
@@ -713,8 +174,13 @@ class SAMLAuthenticator(Authenticator):
 
             async def get(login_handler_self):
                 login_handler_self.log.info('Starting SP-initiated SAML Login')
-                authenticator_self._get_redirect_from_metadata_and_redirect('md:SingleSignOnService',
-                                                                            login_handler_self)
+                saml_client = authenticator_self._get_saml_client()
+                reqid, info = saml_client.prepare_for_authenticate()
+                redirect_url = None
+                for key, value in info['headers']:
+                    if key == 'Location':
+                        redirect_url = value
+                login_handler_self.redirect(redirect_url, permanent=False)
 
         class SAMLLogoutHandler(LogoutHandler):
             # TODO: When the time is right to force users onto JupyterHub 1.0.0,
@@ -750,18 +216,8 @@ class SAMLAuthenticator(Authenticator):
                 if logout_handler_self.current_user:
                     logout_handler_self._backend_logout_cleanup(logout_handler_self.current_user.name)
 
-                # This is a little janky, but there was a misspelling in a prior version
-                # where someone could have set the wrong flag because of the documentation.
-                # We will honor the misspelling until we rev the version, and then we will
-                # break backward compatibility.
-                forward_on_logout = True if authenticator_self.slo_forward_on_logout else False
-                forwad_on_logout = True if authenticator_self.slo_forwad_on_logout else False
-                if forward_on_logout or forwad_on_logout:
-                    authenticator_self._get_redirect_from_metadata_and_redirect('md:SingleLogoutService',
-                                                                                logout_handler_self)
-                else:
-                    html = logout_handler_self.render_template('logout.html', sync=True)
-                    logout_handler_self.finish(html)
+                html = logout_handler_self.render_template('logout.html', sync=True)
+                logout_handler_self.finish(html)
 
 
         return [('/login', SAMLLoginHandler),
