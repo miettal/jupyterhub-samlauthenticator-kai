@@ -1,3 +1,4 @@
+"""jupyterhub-samlauthenticator package."""
 from setuptools import setup
 
 
@@ -12,7 +13,7 @@ setup(
         'pytz>=2019.1',
         'pysaml2>=7.4',
     ],
-    extras_require={"tests": [
+    extras_require={'tests': [
         'pytest>=4.0.0',
         'pytest-asyncio>=0.10.0',
         'pytest-cov>=2.0.0',
