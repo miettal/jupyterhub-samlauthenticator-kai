@@ -10,6 +10,7 @@ setup(
         'lxml>=4.2.1',
         'signxml>=2.6.0',
         'pytz>=2019.1',
+        'pysaml2>=7.4',
     ],
     extras_require={"tests": [
         'pytest>=4.0.0',

@@ -1,25 +1,3 @@
-'''
-(C) Copyright 2019 Hewlett Packard Enterprise Development LP
-
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of this software and associated documentation files (the "Software"),
-to deal in the Software without restriction, including without limitation
-the rights to use, copy, modify, merge, publish, distribute, sublicense,
-and/or sell copies of the Software, and to permit persons to whom the
-Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included
-in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-'''
-
 # Imports from python standard library
 from base64 import b64decode
 from datetime import datetime, timezone
@@ -763,41 +741,6 @@ class SAMLAuthenticator(Authenticator):
 
         return ''
 
-    def _make_sp_metadata(authenticator_self, meta_handler_self):
-        metadata_text = '''<?xml version="1.0"?>
-<EntityDescriptor
-        entityID="{{ entityId }}"
-        xmlns="urn:oasis:names:tc:SAML:2.0:metadata"
-        xmlns:ds="http://www.w3.org/2000/09/xmldsig#"
-        xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion">
-    <SPSSODescriptor
-            AuthnRequestsSigned="false"
-            protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
-        <NameIDFormat>
-            {{ nameIdFormat }}
-        </NameIDFormat>
-        <AssertionConsumerService
-                Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
-                Location="{{ entityLocation }}"/>
-    </SPSSODescriptor>
-    {{ organizationMetadata }}
-</EntityDescriptor>
-'''
-
-        entity_id = authenticator_self.entity_id if authenticator_self.entity_id else \
-                meta_handler_self.request.protocol + '://' + meta_handler_self.request.host
-
-        acs_endpoint_url = authenticator_self.acs_endpoint_url if authenticator_self.acs_endpoint_url else \
-                entity_id + '/hub/login'
-
-        org_metadata_elem = authenticator_self._make_org_metadata()
-
-        xml_template = Template(metadata_text)
-        return xml_template.render(entityId=entity_id,
-                                   nameIdFormat=authenticator_self.nameid_format,
-                                   entityLocation=acs_endpoint_url,
-                                   organizationMetadata=org_metadata_elem)
-
     def get_handlers(authenticator_self, app):
 
         class SAMLLoginHandler(LoginHandler):
@@ -854,17 +797,9 @@ class SAMLAuthenticator(Authenticator):
                     html = logout_handler_self.render_template('logout.html', sync=True)
                     logout_handler_self.finish(html)
 
-        class SAMLMetaHandler(BaseHandler):
-
-            async def get(meta_handler_self):
-                xml_content = authenticator_self._make_sp_metadata(meta_handler_self)
-                meta_handler_self.set_header('Content-Type', 'text/xml')
-                meta_handler_self.write(xml_content)
-
 
         return [('/login', SAMLLoginHandler),
                 ('/hub/login', SAMLLoginHandler),
                 ('/logout', SAMLLogoutHandler),
                 ('/hub/logout', SAMLLogoutHandler),
-                ('/metadata', SAMLMetaHandler),
-                ('/hub/metadata', SAMLMetaHandler)]
+        ]
