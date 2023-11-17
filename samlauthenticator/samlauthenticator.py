@@ -172,6 +172,9 @@ class SAMLAuthenticator(Authenticator):
 
         class SAMLLoginHandler(LoginHandler):
 
+            def check_xsrf_cookie(self):
+                return
+
             async def get(login_handler_self):
                 login_handler_self.log.info('Starting SP-initiated SAML Login')
                 saml_client = authenticator_self._get_saml_client()
