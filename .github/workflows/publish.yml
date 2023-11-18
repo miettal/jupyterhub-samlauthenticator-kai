@@ -2,9 +2,10 @@
 name: publish
 
 on: # yamllint disable-line rule:truthy
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+  # push:
+  #   tags:
+  #     - 'v*'
 
 jobs:
   publish-to-pypi:
