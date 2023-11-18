@@ -1,11 +1,10 @@
-# Imports from python standard library
-from base64 import b64decode
-from datetime import datetime, timezone
-from urllib.request import urlopen
-
+"""samlauthenticator.samlauthenticator."""
 import asyncio
-import pwd
-import subprocess
+
+from jupyterhub.auth import Authenticator
+from jupyterhub.handlers.login import LoginHandler
+from jupyterhub.handlers.login import LogoutHandler
+from jupyterhub.utils import maybe_future
 
 from saml2 import BINDING_HTTP_POST
 from saml2 import BINDING_HTTP_REDIRECT
@@ -13,57 +12,51 @@ from saml2 import entity
 from saml2.client import Saml2Client
 from saml2.config import Config as Saml2Config
 
-# Imports to work with JupyterHub
-from jupyterhub.auth import Authenticator
-from jupyterhub.utils import maybe_future
-from jupyterhub.handlers.base import BaseHandler
-from jupyterhub.handlers.login import LoginHandler, LogoutHandler
-from tornado import gen, web
-from traitlets import Unicode, Bool
-from jinja2 import Template
+from tornado import gen
 
-# Imports for me
-from lxml import etree
-import pytz
-from signxml import XMLVerifier
+from traitlets import Bool
+from traitlets import Unicode
+
 
 class SAMLAuthenticator(Authenticator):
+    """SAMLAuthenticator."""
+
     metadata_filepath = Unicode(
         default_value='',
         allow_none=True,
         config=True,
-        help='''
+        help="""
         A filepath to the location of the SAML IdP metadata. This is the most preferable
         option for presenting an IdP's metadata to the authenticator.
-        '''
+        """,
     )
     metadata_content = Unicode(
         default_value='',
         allow_none=True,
         config=True,
-        help='''
+        help="""
         A fully-inlined version of the SAML IdP metadata. Mostly provided for testing,
         but if you want to use this for a "production-type" system, I'm not going to
         judge. This is preferred above getting metadata from a web-request, but not
         preferred above getting the metadata from a file.
-        '''
+        """,
     )
     metadata_url = Unicode(
         default_value='',
         allow_none=True,
         config=True,
-        help='''
+        help="""
         A URL where the SAML Authenticator can find metadata for the SAML IdP. This is
         the least preferable method of providing the SAML IdP metadata to the
         authenticator, as it is both slow and vulnerable to Man in the Middle attacks,
         including DNS poisoning.
-        '''
+        """,
     )
     shutdown_on_logout = Bool(
         default_value=False,
         allow_none=False,
         config=True,
-        help='''
+        help="""
         If you would like to shutdown user servers on logout, you can enable this
         behavior with:
 
@@ -75,13 +68,13 @@ class SAMLAuthenticator(Authenticator):
         It is a little odd to have this property on the Authenticator object, but
         (for internal-detail-reasons) since we need to hand-craft the LogoutHandler
         class, this should be on the Authenticator.
-        '''
+        """,
     )
     entity_id = Unicode(
         default_value='',
         allow_none=True,
         config=True,
-        help='''
+        help="""
         The entity id for this specific JupyterHub instance. If
         populated, this will be included in the SP metadata as
         the entity id. If this is not populated, the entity will
@@ -94,13 +87,13 @@ class SAMLAuthenticator(Authenticator):
         if the JupyterHub server should be reached at
         10.0.31.2:8000, this should be populated as
         'https://10.0.31.2:8000'
-        '''
+        """,
     )
     acs_endpoint_url = Unicode(
         default_value='',
         allow_none=True,
         config=True,
-        help='''
+        help="""
         The access consumer endpoint url for this specific
         JupyterHub instance. If populated, this will be
         included in the SP metadata as the acs endpoint
@@ -115,17 +108,18 @@ class SAMLAuthenticator(Authenticator):
         If this is not populated, the entity location
         will populate as the entity id concatenated
         to '/hub/login'.
-        '''
+        """,
     )
 
     @gen.coroutine
     def authenticate(self, handler, data):
+        """authenticate."""
         saml_client = self._get_saml_client()
         authn_response = saml_client.parse_authn_request_response(data['SAMLResponse'], entity.BINDING_HTTP_POST)
         authn_response.get_identity()
         user_info = authn_response.get_subject()
         username = user_info.text
-    
+
         username = self.normalize_username(username)
         if self.validate_username(username) and self.check_blacklist(username) and self.check_whitelist(username):
             return username
@@ -135,6 +129,7 @@ class SAMLAuthenticator(Authenticator):
         return None
 
     def _get_saml_client(self):
+        """_get_saml_client."""
         settings = {
             'entityid': self.entity_id,
             'metadata': {
@@ -168,32 +163,23 @@ class SAMLAuthenticator(Authenticator):
         saml_client = Saml2Client(config=config)
         return saml_client
 
-    def get_handlers(authenticator_self, app):
-
+    def get_handlers(authenticator_self, app):  # noqa: N805 C901
+        """get_handlers."""
         class SAMLLoginHandler(LoginHandler):
 
             def check_xsrf_cookie(self):
                 return
 
-            async def get(login_handler_self):
+            async def get(login_handler_self):  # noqa: N805
                 login_handler_self.log.info('Starting SP-initiated SAML Login')
                 saml_client = authenticator_self._get_saml_client()
                 reqid, info = saml_client.prepare_for_authenticate()
-                redirect_url = None
-                for key, value in info['headers']:
-                    if key == 'Location':
-                        redirect_url = value
+                redirect_url = info['headers'].get('Location', None)
                 login_handler_self.redirect(redirect_url, permanent=False)
 
         class SAMLLogoutHandler(LogoutHandler):
-            # TODO: When the time is right to force users onto JupyterHub 1.0.0,
-            # refactor this.
             async def _shutdown_servers(self, user):
-                active_servers = [
-                    name
-                    for (name, spawner) in user.spawners.items()
-                    if spawner.active and not spawner.pending
-                ]
+                active_servers = [name for (name, spawner) in user.spawners.items() if spawner.active and not spawner.pending]
                 if active_servers:
                     self.log.debug("Shutting down %s's servers", user.name)
                     futures = []
@@ -202,7 +188,7 @@ class SAMLAuthenticator(Authenticator):
                     await asyncio.gather(*futures)
 
             def _backend_logout_cleanup(self, name):
-                self.log.info("User logged out: %s", name)
+                self.log.info('User logged out: %s', name)
                 self.clear_login_cookie()
                 self.statsd.incr('logout')
 
@@ -211,7 +197,7 @@ class SAMLAuthenticator(Authenticator):
                 if user:
                     await self._shutdown_servers(user)
 
-            async def get(logout_handler_self):
+            async def get(logout_handler_self):  # noqa: N805
                 if authenticator_self.shutdown_on_logout:
                     logout_handler_self.log.debug('Shutting down servers during SAML Logout')
                     await logout_handler_self._shutdown_servers_and_backend_cleanup()
@@ -222,9 +208,9 @@ class SAMLAuthenticator(Authenticator):
                 html = logout_handler_self.render_template('logout.html', sync=True)
                 logout_handler_self.finish(html)
 
-
-        return [('/login', SAMLLoginHandler),
-                ('/hub/login', SAMLLoginHandler),
-                ('/logout', SAMLLogoutHandler),
-                ('/hub/logout', SAMLLogoutHandler),
+        return [
+            ('/login', SAMLLoginHandler),
+            ('/hub/login', SAMLLoginHandler),
+            ('/logout', SAMLLogoutHandler),
+            ('/hub/logout', SAMLLogoutHandler),
         ]
