@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/miettal/jupyterhub-samlauthenticator-kai/compare/v0.1.0...v0.2.0) (2023-11-18)
+
+
+### Features
+
+* add publish ci ([0b5ddc0](https://github.com/miettal/jupyterhub-samlauthenticator-kai/commit/0b5ddc04c417caf0971faf29288901cafdac4259))
+* change setup.py to pyproject.toml ([cd9c547](https://github.com/miettal/jupyterhub-samlauthenticator-kai/commit/cd9c547f798b3dd86ac1ced7a49f3d43ff557662))
+
 ## [0.1.0](https://github.com/miettal/jupyterhub-samlauthenticator/compare/v0.0.10...v0.1.0) (2023-11-18)
 
 
