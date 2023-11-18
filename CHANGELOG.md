@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/miettal/jupyterhub-samlauthenticator-kai/compare/v0.2.0...v0.2.1) (2023-11-18)
+
+
+### Bug Fixes
+
+* change release flow ([1d9d6f6](https://github.com/miettal/jupyterhub-samlauthenticator-kai/commit/1d9d6f6c137123374e7bf5402fb6f6e7ccc9bfb7))
+
 ## [0.2.0](https://github.com/miettal/jupyterhub-samlauthenticator-kai/compare/v0.1.0...v0.2.0) (2023-11-18)
 
 
