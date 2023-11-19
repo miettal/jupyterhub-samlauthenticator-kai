@@ -3,6 +3,18 @@
 this repo is forked from https://github.com/HewlettPackard/jupyterhub-samlauthenticator.
 and this repo aim to refactor code and implement by simple code with pysaml2.
 
+## how to use
+
+    $ pip jupyterhub-samlauthenticator-kai
+
+    $ vi jupyterhub_config.py  # note: this authenticator use Subject(aka. NameID, generally email is used) as username.
+    c.JupyterHub.authenticator_class = 'samlauthenticator.SAMLAuthenticator'
+    c.SAMLAuthenticator.metadata_filepath = '/path/to/metadata.xml'
+    c.SAMLAuthenticator.entity_id = 'http://sp.example.com/'
+    c.SAMLAuthenticator.acs_endpoint_url = 'http://jupyterhub.example.com/hub/login'
+
+    $ jupyterhub
+
 below text is original readme.
 
 [![Build Status](https://travis-ci.com/bluedatainc/jupyterhub-samlauthenticator.svg?branch=master)](https://travis-ci.com/bluedatainc/jupyterhub-samlauthenticator)
