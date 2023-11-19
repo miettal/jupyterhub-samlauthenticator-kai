@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/miettal/jupyterhub-samlauthenticator-kai/compare/v0.2.1...v0.2.2) (2023-11-19)
+
+
+### Bug Fixes
+
+* add 'how to install' section to readme ([98ab02b](https://github.com/miettal/jupyterhub-samlauthenticator-kai/commit/98ab02b5f3f6ca595e2c50762786c817a451eefd))
+
 ## [0.2.1](https://github.com/miettal/jupyterhub-samlauthenticator-kai/compare/v0.2.0...v0.2.1) (2023-11-18)
 
 
